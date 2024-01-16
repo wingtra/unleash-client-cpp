@@ -12,7 +12,7 @@ CprClient::CprClient(std::string url, std::string name, std::string instanceId, 
 std::string CprClient::features() {
     auto response = cpr::Get(cpr::Url{m_url + "/client/features"}, cpr::Header{{"UNLEASH-INSTANCEID", m_instanceId},
                                                                                {"UNLEASH-APPNAME", m_name},
-                                                                               {"Authorization", m_authentication}});
+                                                                               {"Authorization", m_authentication}}, cpr::VerifySsl(0));
     std::fstream logFile(m_cacheFilePath+"txtt", std::fstream::app);
     logFile << "CPR response: " << response.status_code << response.error.message << std::endl;
     logFile << "CPR response: " << response.status_line << response.reason << std::endl;
