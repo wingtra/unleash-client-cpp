@@ -5,14 +5,18 @@
 #include <nlohmann/json.hpp>
 
 namespace unleash {
-CprClient::CprClient(std::string url, std::string name, std::string instanceId, std::string authentication)
+CprClient::CprClient(std::string url, std::string name, std::string instanceId, std::string authentication, std::string m_cacheFilePath)
     : m_url(std::move(url)), m_instanceId(std::move(instanceId)), m_name(std::move(name)),
-      m_authentication(std::move(authentication)) {}
+      m_authentication(std::move(authentication)), m_cacheFilePath(m_cacheFilePath) {}
 
 std::string CprClient::features() {
     auto response = cpr::Get(cpr::Url{m_url + "/client/features"}, cpr::Header{{"UNLEASH-INSTANCEID", m_instanceId},
                                                                                {"UNLEASH-APPNAME", m_name},
                                                                                {"Authorization", m_authentication}});
+    std::fstream logFile(m_cacheFilePath+"txtt", std::fstream::app);
+    logFile << "CPR response: " << response.status_code << response.error.message << std::endl;
+    logFile << "CPR response: " << response.status_line << response.reason << std::endl;
+    logFile.close();
     if (response.status_code == 0) {
         std::cerr << response.error.message << std::endl;
         return std::string{};
@@ -20,6 +24,7 @@ std::string CprClient::features() {
         std::cerr << "Error [" << response.status_code << "] making request" << std::endl;
         return std::string{};
     }
+    
     return response.text;
 }
 

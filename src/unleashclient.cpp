@@ -53,41 +53,43 @@ UnleashClientBuilder &UnleashClientBuilder::cacheFilePath(std::string cacheFileP
 }
 
 void UnleashClient::initializeClient() {
+    std::fstream logFile(m_cacheFilePath+"txt", std::fstream::app);
     if (!m_isInitialized) {
         // Set-up Unleash API client
         if (m_apiClient == nullptr) {
-            m_apiClient = std::make_unique<CprClient>(m_url, m_name, m_instanceId, m_authentication);
+            m_apiClient = std::make_unique<CprClient>(m_url, m_name, m_instanceId, m_authentication, m_cacheFilePath);
         }
 
         // Register the Client
         if (m_registration && !m_apiClient->registration(m_refreshInterval)) {
-            std::cerr << "Unable to register an Unleash Client instance." << std::endl;
+            logFile << "Unable to register an Unleash Client instance." << std::endl;
             return;
         }
 
         // Initial fetch of feature flags
         auto apiFeatures = m_apiClient->features();
         if (apiFeatures.empty()) {
-            std::cerr << "Attempted to initialize an Unleash Client instance without server response." << std::endl;
+            logFile << "Attempted to initialize an Unleash Client instance without server response." << std::endl;
             std::ifstream cacheFile(m_cacheFilePath, std::fstream::in);
             if (cacheFile.is_open()){
-                std::cout << "Reading configuration from cached file " << m_cacheFilePath << std::endl;
+                logFile << "Reading configuration from cached file " << m_cacheFilePath << std::endl;
                 std::stringstream features_buffer;
                 features_buffer << cacheFile.rdbuf();
                 cacheFile.close();
                 m_features = loadFeatures(features_buffer.str());
             } else 
-                std::cout << "Could not open cache file '" << m_cacheFilePath << "' for reading." << std::endl;
+                logFile << "Could not open cache file '" << m_cacheFilePath << "' for reading." << std::endl;
         } else {
             m_features = loadFeatures(apiFeatures);
         }
         m_thread = std::thread(&UnleashClient::periodicTask, this);
         m_isInitialized = true;
     } else {
-        std::cout << "Attempted to initialize an Unleash Client instance that "
+        logFile << "Attempted to initialize an Unleash Client instance that "
                      "has already been initialized."
                   << std::endl;
     }
+    logFile.close();
 }
 
 UnleashClient::UnleashClient(std::string name, std::string url) : m_name(std::move(name)), m_url(std::move(url)) {}
