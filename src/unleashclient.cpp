@@ -111,7 +111,7 @@ void UnleashClient::periodicTask() {
                 }
                 auto end = std::chrono::high_resolution_clock::now();
                 auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-                statFile << duration.count();
+                statFile << duration.count() << "\n";
             } else if (m_features.empty()) {
                 std::ifstream cacheFile(m_cacheFilePath);
                 if(cacheFile.is_open()){
