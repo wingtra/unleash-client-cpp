@@ -44,7 +44,6 @@ private:
     std::string m_authentication;
     bool m_registration = false;
     std::string m_cacheFilePath;
-    std::ofstream* statFile;
     unsigned int m_refreshInterval = 15000;
     std::thread m_thread;
     bool m_stopThread = false;
