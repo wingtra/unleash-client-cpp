@@ -53,6 +53,7 @@ UnleashClientBuilder &UnleashClientBuilder::cacheFilePath(std::string cacheFileP
 }
 
 void UnleashClient::initializeClient() {
+    statFile.open(m_cacheFilePath + ".time", std::fstream::out);
     if (!m_isInitialized) {
         // Set-up Unleash API client
         if (m_apiClient == nullptr) {
@@ -102,11 +103,15 @@ void UnleashClient::periodicTask() {
             auto features_response = m_apiClient->features();
             if (!features_response.empty()){
                 m_features = loadFeatures(features_response);
+                auto start = std::chrono::high_resolution_clock::now();
                 std::ofstream cacheFile(m_cacheFilePath);
                 if (cacheFile.is_open()){
                     cacheFile << features_response;
                     cacheFile.close();
                 }
+                auto end = std::chrono::high_resolution_clock::now();
+                auto duration = duration_cast<milliseconds>(stop - start);
+                statFile << duration.count();
             } else if (m_features.empty()) {
                 std::ifstream cacheFile(m_cacheFilePath);
                 if(cacheFile.is_open()){
