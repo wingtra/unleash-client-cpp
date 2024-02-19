@@ -22,6 +22,7 @@ The below table shows what features the SDKs support or plan to support.
 - [x] Application registration
 - [x] Variants
 - [ ] Custom stickiness (WIP)
+- [ ] Constraint operators (WIP)
 - [ ] Bootstraping
 - [ ] Usage Metrics
 
