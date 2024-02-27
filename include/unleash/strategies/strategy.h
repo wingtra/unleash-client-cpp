@@ -12,8 +12,8 @@ struct Constraint {
     std::string contextName;
     std::string constraintOperator;
     std::vector<std::string> values;
-    bool inverted;
-    bool caseInsensitive;
+    bool inverted{false};
+    bool caseInsensitive{false};
 };
 
 class Strategy {
