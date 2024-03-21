@@ -36,7 +36,7 @@ std::vector<TestParam> readSpecificationTestFromDisk(const std::string &testPath
     // range-based to read each test
     for (auto &element : j) {  // Only features implemented for now
         auto testNumber = std::stoi(element.get<std::string>().substr(0, 2));
-        if (testNumber <= 12) {
+        if (testNumber <= 13) {
             std::cout << testPath + element.get<std::string>() << std::endl;
             std::ifstream testFile(testPath + element.get<std::string>());
             nlohmann::json testJson;
@@ -97,14 +97,29 @@ TEST_P(UnleashSpecificationTest, TestSet) {
     auto testData = GetParam();
     auto apiMock = std::make_shared<ApiClientMock>();
     constexpr unsigned int refreshInterval = 500;
+    std::string cacheFilePath = std::string{std::filesystem::current_path().u8string()}+"/testCache.json";
+    // Initialize auxiliary client to write to cache file
+    unleash::UnleashClient unleashClientTmp = unleash::UnleashClient::create("production", "urlMock")
+                                                    .instanceId("intanceId")
+                                                    .environment("production")
+                                                    .apiClient(apiMock)
+                                                    .refreshInterval(refreshInterval)
+                                                    .authentication("clientToken")
+                                                    .registration(true)
+                                                    .cacheFilePath(cacheFilePath);
+    EXPECT_CALL(*apiMock, features()).WillOnce(Return(std::get<0>(testData)));
+    EXPECT_CALL(*apiMock, registration(refreshInterval)).WillRepeatedly(Return(true));
+    unleashClientTmp.initializeClient();
+    // Initialize proper client, will read from cache file
     unleash::UnleashClient unleashClient = unleash::UnleashClient::create("production", "urlMock")
                                                    .instanceId("intanceId")
                                                    .environment("production")
                                                    .apiClient(apiMock)
                                                    .refreshInterval(refreshInterval)
                                                    .authentication("clientToken")
-                                                   .registration(true);
-    EXPECT_CALL(*apiMock, features()).WillRepeatedly(Return(std::get<0>(testData)));
+                                                   .registration(true)
+                                                   .cacheFilePath(cacheFilePath);
+    EXPECT_CALL(*apiMock, features()).WillRepeatedly(Return("")); // Pretend no internet connection
     EXPECT_CALL(*apiMock, registration(refreshInterval)).WillRepeatedly(Return(true));
     unleashClient.initializeClient();
     nlohmann::json testSet = nlohmann::json::parse(std::get<1>(testData));
@@ -113,16 +128,17 @@ TEST_P(UnleashSpecificationTest, TestSet) {
         auto contextJson = value["context"];
         unleash::Context testContext{contextJson.value("userId", ""), contextJson.value("sessionId", ""),
                                      contextJson.value("remoteAddress", ""), contextJson.value("environment", ""),
-                                     contextJson.value("appName", "")};
+                                     contextJson.value("appName", ""), contextJson.value("currentTime", "")};
         if (contextJson.contains("properties")) {
             for (auto &[propertyKey, propertyValue] : contextJson["properties"].items()) {
+                if (propertyValue == nullptr)
+                    propertyValue = "";
                 testContext.properties.try_emplace(propertyKey, propertyValue);
             }
         }
         if (!std::get<2>(testData)) {
             EXPECT_EQ(unleashClient.isEnabled(value["toggleName"], testContext), value["expectedResult"].get<bool>());
         } else {
-            std::cout << value["toggleName"] << std::endl;
             nlohmann::json expectedResult = value["expectedResult"];
             auto variant = unleashClient.variant(value["toggleName"], testContext);
             EXPECT_EQ(expectedResult["feature_enabled"], variant.featureEnabled);
@@ -131,6 +147,7 @@ TEST_P(UnleashSpecificationTest, TestSet) {
             if (expectedResult.contains("payload")) EXPECT_EQ(expectedResult["payload"].dump(), variant.payload);
         }
     }
+    std::remove(cacheFilePath.c_str());
 }
 
 INSTANTIATE_TEST_SUITE_P(AllSpecificationFiles, UnleashSpecificationTest,
