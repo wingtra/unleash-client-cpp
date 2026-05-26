@@ -32,7 +32,7 @@ jobs:
       uses: ashutoshvarma/setup-ninja@master
     
     - name: Cache SonarCloud packages
-      uses: actions/cache@v1
+      uses: actions/cache@v4
       with:
         path: ~/.sonar/cache
         key: ${{ runner.os }}-sonar
