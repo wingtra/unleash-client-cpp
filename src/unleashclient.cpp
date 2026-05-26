@@ -81,16 +81,12 @@ void UnleashClient::initializeClient() {
                 features_buffer << cacheFile.rdbuf();
                 cacheFile.close();
                 auto features = loadFeatures(features_buffer.str());
-                std::lock_guard<std::mutex> lock(m_featuresMutex);
-                m_features = std::move(features);
+                safelyUpdateFeatures(std::move(features));
             } else 
                 std::cout << "Could not open cache file '" << m_cacheFilePath << "' for reading." << std::endl;
         } else {
             auto features = loadFeatures(apiFeatures);
-            {
-                std::lock_guard<std::mutex> lock(m_featuresMutex);
-                m_features = std::move(features);
-            }
+            safelyUpdateFeatures(std::move(features));
             std::ofstream cacheFile(m_cacheFilePath);
             if (cacheFile.is_open()){
                 cacheFile << apiFeatures;
@@ -141,31 +137,20 @@ void UnleashClient::periodicTask() {
             auto features_response = m_apiClient->features();
             if (!features_response.empty()){
                 auto features = loadFeatures(features_response);
-                {
-                    std::lock_guard<std::mutex> lock(m_featuresMutex);
-                    m_features = std::move(features);
-                }
+                safelyUpdateFeatures(std::move(features));
                 std::ofstream cacheFile(m_cacheFilePath);
                 if (cacheFile.is_open()){
                     cacheFile << features_response;
                     cacheFile.close();
                 }
-            } else {
-                bool featuresEmpty = false;
-                {
-                    std::lock_guard<std::mutex> lock(m_featuresMutex);
-                    featuresEmpty = m_features.empty();
-                }
-                if (!featuresEmpty) { continue; }
-
+            } else if (m_features.empty()) {
                 std::ifstream cacheFile(m_cacheFilePath);
                 if(cacheFile.is_open()){
                     std::stringstream features_buffer;
                     features_buffer << cacheFile.rdbuf();
                     cacheFile.close();
                     auto features = loadFeatures(features_buffer.str());
-                    std::lock_guard<std::mutex> lock(m_featuresMutex);
-                    m_features = std::move(features);
+                    safelyUpdateFeatures(std::move(features));
                 }
             }
         }
@@ -212,6 +197,11 @@ variant_t UnleashClient::variant(const std::string &flag, const unleash::Context
         }
     }
     return variant;
+}
+
+void UnleashClient::safelyUpdateFeatures(featuresMap_t features) {
+    std::lock_guard<std::mutex> lock(m_featuresMutex);
+    m_features = std::move(features);
 }
 
 UnleashClient::featuresMap_t UnleashClient::loadFeatures(std::string_view features) const {
