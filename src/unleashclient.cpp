@@ -94,7 +94,7 @@ void UnleashClient::initializeClient() {
             }
         }
         m_thread = std::thread(&UnleashClient::periodicTask, this);
-        m_isInitialized.store(true);
+        m_isInitialized.exchange(true);
     } else {
         std::cout << "Attempted to initialize an Unleash Client instance that "
                      "has already been initialized."
@@ -105,7 +105,7 @@ void UnleashClient::initializeClient() {
 UnleashClient::UnleashClient(std::string name, std::string url) : m_name(std::move(name)), m_url(std::move(url)) {}
 
 UnleashClient::UnleashClient(UnleashClient &&other) {
-    other.m_stopThread.store(true);
+    other.m_stopThread.exchange(true);
     if (other.m_thread.joinable()) other.m_thread.join();
 
     std::lock_guard<std::mutex> lock(other.m_featuresMutex);
@@ -118,12 +118,12 @@ UnleashClient::UnleashClient(UnleashClient &&other) {
     m_cacheFilePath = std::move(other.m_cacheFilePath);
     m_caInfo = std::move(other.m_caInfo);
     m_refreshInterval = other.m_refreshInterval;
-    m_isInitialized.store(other.m_isInitialized.load());
+    m_isInitialized.exchange(other.m_isInitialized.load());
     m_features = std::move(other.m_features);
     m_apiClient = std::move(other.m_apiClient);
 
-    other.m_isInitialized.store(false);
-    other.m_stopThread.store(false);
+    other.m_isInitialized.exchange(false);
+    other.m_stopThread.exchange(false);
     if (m_isInitialized.load()) { m_thread = std::thread(&UnleashClient::periodicTask, this); }
 }
 
@@ -158,7 +158,7 @@ void UnleashClient::periodicTask() {
 }
 
 UnleashClient::~UnleashClient() {
-    m_stopThread.store(true);
+    m_stopThread.exchange(true);
     if (m_thread.joinable()) m_thread.join();
 }
 
