@@ -4,6 +4,7 @@
 #include "unleash/api/apiclient.h"
 #include "unleash/export.h"
 #include "unleash/feature.h"
+#include <atomic>
 #include <condition_variable>
 #include <iostream>
 #include <map>
@@ -22,7 +23,7 @@ public:
 
     friend class UnleashClientBuilder;
     ~UnleashClient();
-    UnleashClient(UnleashClient &&) = default;
+    UnleashClient(UnleashClient &&other);
     friend UNLEASH_EXPORT std::ostream &operator<<(std::ostream &os, const UnleashClient &obj);
     static UnleashClientBuilder create(std::string name, std::string url);
     void initializeClient();
@@ -47,8 +48,9 @@ private:
     std::string m_caInfo;
     unsigned int m_refreshInterval = 15000;
     std::thread m_thread;
-    bool m_stopThread = false;
-    bool m_isInitialized = false;
+    std::atomic_bool m_stopThread{false};
+    std::atomic_bool m_isInitialized{false};
+    mutable std::mutex m_featuresMutex;
     featuresMap_t m_features;
     std::shared_ptr<ApiClient> m_apiClient;
     static constexpr unsigned int k_pollInterval = 500;

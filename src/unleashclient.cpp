@@ -58,7 +58,7 @@ UnleashClientBuilder &UnleashClientBuilder::caInfo(std::string caInfo) {
 }
 
 void UnleashClient::initializeClient() {
-    if (!m_isInitialized) {
+    if (!m_isInitialized.load()) {
         // Set-up Unleash API client
         if (m_apiClient == nullptr) {
             m_apiClient = std::make_unique<CprClient>(m_url, m_name, m_instanceId, m_authentication, m_caInfo);
@@ -80,11 +80,17 @@ void UnleashClient::initializeClient() {
                 std::stringstream features_buffer;
                 features_buffer << cacheFile.rdbuf();
                 cacheFile.close();
-                m_features = loadFeatures(features_buffer.str());
+                auto features = loadFeatures(features_buffer.str());
+                std::lock_guard<std::mutex> lock(m_featuresMutex);
+                m_features = std::move(features);
             } else 
                 std::cout << "Could not open cache file '" << m_cacheFilePath << "' for reading." << std::endl;
         } else {
-            m_features = loadFeatures(apiFeatures);
+            auto features = loadFeatures(apiFeatures);
+            {
+                std::lock_guard<std::mutex> lock(m_featuresMutex);
+                m_features = std::move(features);
+            }
             std::ofstream cacheFile(m_cacheFilePath);
             if (cacheFile.is_open()){
                 cacheFile << apiFeatures;
@@ -92,7 +98,7 @@ void UnleashClient::initializeClient() {
             }
         }
         m_thread = std::thread(&UnleashClient::periodicTask, this);
-        m_isInitialized = true;
+        m_isInitialized.store(true);
     } else {
         std::cout << "Attempted to initialize an Unleash Client instance that "
                      "has already been initialized."
@@ -102,28 +108,64 @@ void UnleashClient::initializeClient() {
 
 UnleashClient::UnleashClient(std::string name, std::string url) : m_name(std::move(name)), m_url(std::move(url)) {}
 
+UnleashClient::UnleashClient(UnleashClient &&other) {
+    other.m_stopThread.store(true);
+    if (other.m_thread.joinable()) other.m_thread.join();
+
+    std::lock_guard<std::mutex> lock(other.m_featuresMutex);
+    m_name = std::move(other.m_name);
+    m_url = std::move(other.m_url);
+    m_instanceId = std::move(other.m_instanceId);
+    m_environment = std::move(other.m_environment);
+    m_authentication = std::move(other.m_authentication);
+    m_registration = other.m_registration;
+    m_cacheFilePath = std::move(other.m_cacheFilePath);
+    m_caInfo = std::move(other.m_caInfo);
+    m_refreshInterval = other.m_refreshInterval;
+    m_isInitialized.store(other.m_isInitialized.load());
+    m_features = std::move(other.m_features);
+    m_apiClient = std::move(other.m_apiClient);
+
+    other.m_isInitialized.store(false);
+    other.m_stopThread.store(false);
+    if (m_isInitialized.load()) { m_thread = std::thread(&UnleashClient::periodicTask, this); }
+}
+
 void UnleashClient::periodicTask() {
     unsigned long globalTimer = 0;
-    while (!m_stopThread) {
+    while (!m_stopThread.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(k_pollInterval));
         globalTimer += k_pollInterval;
         if (globalTimer >= m_refreshInterval) {
             globalTimer = 0;
             auto features_response = m_apiClient->features();
             if (!features_response.empty()){
-                m_features = loadFeatures(features_response);
+                auto features = loadFeatures(features_response);
+                {
+                    std::lock_guard<std::mutex> lock(m_featuresMutex);
+                    m_features = std::move(features);
+                }
                 std::ofstream cacheFile(m_cacheFilePath);
                 if (cacheFile.is_open()){
                     cacheFile << features_response;
                     cacheFile.close();
                 }
-            } else if (m_features.empty()) {
+            } else {
+                bool featuresEmpty = false;
+                {
+                    std::lock_guard<std::mutex> lock(m_featuresMutex);
+                    featuresEmpty = m_features.empty();
+                }
+                if (!featuresEmpty) { continue; }
+
                 std::ifstream cacheFile(m_cacheFilePath);
                 if(cacheFile.is_open()){
                     std::stringstream features_buffer;
                     features_buffer << cacheFile.rdbuf();
                     cacheFile.close();
-                    m_features = loadFeatures(features_buffer.str());
+                    auto features = loadFeatures(features_buffer.str());
+                    std::lock_guard<std::mutex> lock(m_featuresMutex);
+                    m_features = std::move(features);
                 }
             }
         }
@@ -131,13 +173,14 @@ void UnleashClient::periodicTask() {
 }
 
 UnleashClient::~UnleashClient() {
-    m_stopThread = true;
+    m_stopThread.store(true);
     if (m_thread.joinable()) m_thread.join();
 }
 
 std::vector<std::string> UnleashClient::featureFlags() const {
     std::vector<std::string> featureFlags;
-    if (m_isInitialized) {
+    if (m_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(m_featuresMutex);
         for (auto it = m_features.begin(); it != m_features.end(); it++) {
             featureFlags.push_back(it->first);
         }
@@ -151,9 +194,10 @@ bool UnleashClient::isEnabled(const std::string &flag) {
 }
 
 bool UnleashClient::isEnabled(const std::string &flag, const Context &context) {
-    if (m_isInitialized) {
+    if (m_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(m_featuresMutex);
         if (auto search = m_features.find(flag); search != m_features.end()) {
-            return m_features.at(flag).isEnabled(context);
+            return search->second.isEnabled(context);
         }
     }
     return false;
@@ -161,10 +205,10 @@ bool UnleashClient::isEnabled(const std::string &flag, const Context &context) {
 
 variant_t UnleashClient::variant(const std::string &flag, const unleash::Context &context) {
     variant_t variant{"disabled", 0, false, false};
-    if (m_isInitialized) {
-        variant.featureEnabled = isEnabled(flag, context);
+    if (m_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(m_featuresMutex);
         if (auto search = m_features.find(flag); search != m_features.end()) {
-            return m_features.at(flag).getVariant(context);
+            return search->second.getVariant(context);
         }
     }
     return variant;
