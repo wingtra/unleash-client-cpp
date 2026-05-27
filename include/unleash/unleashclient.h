@@ -5,7 +5,6 @@
 #include "unleash/export.h"
 #include "unleash/feature.h"
 #include <atomic>
-#include <condition_variable>
 #include <iostream>
 #include <map>
 #include <mutex>
