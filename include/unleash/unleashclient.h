@@ -37,7 +37,7 @@ private:
     UnleashClient(std::string name, std::string url);
     void periodicTask();
     featuresMap_t loadFeatures(std::string_view features) const;
-    void safelyUpdateFeatures(featuresMap_t features);
+    void safelyUpdateFeatures(std::string_view features);
 
     std::string m_name;
     std::string m_url;
