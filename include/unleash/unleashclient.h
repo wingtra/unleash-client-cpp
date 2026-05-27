@@ -51,6 +51,7 @@ private:
     std::thread m_thread;
     std::atomic_bool m_stopThread{false};
     std::atomic_bool m_isInitialized{false};
+    std::mutex m_initializeClientMutex;
     mutable std::mutex m_featuresMutex;
     featuresMap_t m_features;
     std::shared_ptr<ApiClient> m_apiClient;

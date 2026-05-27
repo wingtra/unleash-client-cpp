@@ -58,6 +58,7 @@ UnleashClientBuilder &UnleashClientBuilder::caInfo(std::string caInfo) {
 }
 
 void UnleashClient::initializeClient() {
+    std::lock_guard<std::mutex> initializeClientLock(m_initializeClientMutex);
     if (!m_isInitialized.load()) {
         // Set-up Unleash API client
         if (m_apiClient == nullptr) {
